@@ -25,6 +25,8 @@ class BWFCO_WasapBom extends BWF_CO {
 
         add_filter( 'wfco_connectors_loaded', array( $this, 'add_card' ) );
         add_action( 'wp_ajax_bwfan_wb_test_message', array( __CLASS__, 'send_message_via_ajax_call' ) );
+        add_action( 'wp_ajax_bwfan_wb_test_media', array( __CLASS__, 'send_media_via_ajax_call' ) );
+        add_action( 'wp_ajax_bwfan_wb_test_contact', array( __CLASS__, 'add_contact_via_ajax_call' ) );
 
     }
 
@@ -238,6 +240,220 @@ class BWFCO_WasapBom extends BWF_CO {
         }
 
         $message = __( 'Message could not be sent. ', 'funnelkit-wasapbom' );
+
+        if ( isset( $response['body']['message'] ) && $response['body']['success'] === false ) {
+            $message = $response['body']['message'];
+        } elseif ( isset( $response['body']['message'] ) ) {
+            $message = $response['body']['message'];
+        } elseif (! empty( $response['bwfan_response'] )) {
+            $message = $response['bwfan_response'];
+        } elseif ( is_array( $response['body'] ) && isset( $response['body'][0] ) && is_string( $response['body'][0] ) ) {
+            $message = $message . $response['body'][0];
+        }
+
+        return array(
+            'status' => false,
+            'msg'    => $message,
+        );
+    }
+
+    /**
+     * Sending media message by ajax request
+     */
+    public static function send_media_via_ajax_call(): void
+    {
+        BWFAN_Common::check_nonce();
+        $response = self::send_media_message( true );
+        wp_send_json( $response );
+    }
+
+    /**
+     * Adding contact by ajax request
+     */
+    public static function add_contact_via_ajax_call(): void
+    {
+        BWFAN_Common::check_nonce();
+        $response = self::add_contact( true );
+        wp_send_json( $response );
+    }
+
+    /**
+     * sending test media message
+     */
+    public static function send_media_message( $is_ajax, $data = [] ): array
+    {
+        BWFAN_PRO_Common::nocache_headers();
+
+        $result = array(
+            'status' => false,
+            'msg'    => __( 'Error', 'wp-marketing-automations' ),
+        );
+
+        if ( $is_ajax ) {
+            $post = $_POST;
+        } else {
+            $post = $data;
+        }
+
+        $sms_to = $post['test_sms_to'] ?? '';
+        $media_url = $post['media_url'] ?? '';
+        $mediatype = $post['mediatype'] ?? 'image';
+        $caption = $post['caption'] ?? '';
+
+        if ( empty( $sms_to ) ) {
+            $result['msg'] = __( 'Phone number can\'t be blank', 'wp-marketing-automations' );
+            return $result;
+        }
+
+        if ( empty( $media_url ) ) {
+            $result['msg'] = __( 'Media URL can\'t be blank', 'funnelkit-wasapbom' );
+            return $result;
+        }
+
+        $data_to_set = array(
+            'number'    => $sms_to,
+            'media_url' => $media_url,
+            'mediatype' => $mediatype,
+            'caption'   => $caption,
+            'test'      => true
+        );
+
+        /** @var  $global_settings */
+        $global_settings = WFCO_Common::$connectors_saved_data;
+        if ( ! array_key_exists( 'bwfco_wasapbom', $global_settings ) ) {
+            return array(
+                'msg'    => __( 'WasapBom is not connected', 'wp-marketing-automations' ),
+                'status' => false,
+            );
+        }
+
+        $wasapbom_settings = $global_settings['bwfco_wasapbom'];
+
+        $load_connector = WFCO_Load_Connectors::get_instance();
+        $call_class     = $load_connector->get_call( 'wfco_wasapbom_send_media' );
+
+        $data_to_set['api_key'] = $wasapbom_settings['api_key'];
+
+        // is_preview set to true for merge tag before sending data;
+        BWFAN_Merge_Tag_Loader::set_data( array(
+            'is_preview' => true,
+        ) );
+
+        $call_class->set_data( $data_to_set );
+        $response = $call_class->process();
+
+        if ( is_array( $response ) && 200 === $response['response'] && ( isset( $response['body']['success'] ) && $response['body']['success'] === true ) ) {
+            return array(
+                'status' => true,
+                'msg'    => __( 'Media message sent successfully.', 'funnelkit-wasapbom' ),
+            );
+        }
+
+        $message = __( 'Media message could not be sent. ', 'funnelkit-wasapbom' );
+
+        if ( isset( $response['body']['message'] ) && $response['body']['success'] === false ) {
+            $message = $response['body']['message'];
+        } elseif ( isset( $response['body']['message'] ) ) {
+            $message = $response['body']['message'];
+        } elseif (! empty( $response['bwfan_response'] )) {
+            $message = $response['bwfan_response'];
+        } elseif ( is_array( $response['body'] ) && isset( $response['body'][0] ) && is_string( $response['body'][0] ) ) {
+            $message = $message . $response['body'][0];
+        }
+
+        return array(
+            'status' => false,
+            'msg'    => $message,
+        );
+    }
+
+    /**
+     * adding test contact
+     */
+    public static function add_contact( $is_ajax, $data = [] ): array
+    {
+        BWFAN_PRO_Common::nocache_headers();
+
+        $result = array(
+            'status' => false,
+            'msg'    => __( 'Error', 'wp-marketing-automations' ),
+        );
+
+        if ( $is_ajax ) {
+            $post = $_POST;
+        } else {
+            $post = $data;
+        }
+
+        $name = $post['name'] ?? '';
+        $phone_number = $post['phone_number'] ?? '';
+        $title = $post['title'] ?? '';
+        $notes = $post['notes'] ?? '';
+
+        if ( empty( $name ) ) {
+            $result['msg'] = __( 'Contact name can\'t be blank', 'funnelkit-wasapbom' );
+            return $result;
+        }
+
+        if ( empty( $phone_number ) ) {
+            $result['msg'] = __( 'Phone number can\'t be blank', 'wp-marketing-automations' );
+            return $result;
+        }
+
+        $data_to_set = array(
+            'name'         => $name,
+            'phone_number' => $phone_number,
+            'title'        => $title,
+            'notes'        => $notes,
+            'test'         => true
+        );
+
+        // Add custom fields
+        for ( $i = 1; $i <= 10; $i++ ) {
+            $field_key = 'custom_field_' . $i;
+            $label_key = 'custom_field_' . $i . '_label';
+
+            if ( !empty( $post[$field_key] ) ) {
+                $data_to_set[$field_key] = $post[$field_key];
+
+                if ( !empty( $post[$label_key] ) ) {
+                    $data_to_set[$label_key] = $post[$label_key];
+                }
+            }
+        }
+
+        /** @var  $global_settings */
+        $global_settings = WFCO_Common::$connectors_saved_data;
+        if ( ! array_key_exists( 'bwfco_wasapbom', $global_settings ) ) {
+            return array(
+                'msg'    => __( 'WasapBom is not connected', 'wp-marketing-automations' ),
+                'status' => false,
+            );
+        }
+
+        $wasapbom_settings = $global_settings['bwfco_wasapbom'];
+
+        $load_connector = WFCO_Load_Connectors::get_instance();
+        $call_class     = $load_connector->get_call( 'wfco_wasapbom_add_contact' );
+
+        $data_to_set['api_key'] = $wasapbom_settings['api_key'];
+
+        // is_preview set to true for merge tag before sending data;
+        BWFAN_Merge_Tag_Loader::set_data( array(
+            'is_preview' => true,
+        ) );
+
+        $call_class->set_data( $data_to_set );
+        $response = $call_class->process();
+
+        if ( is_array( $response ) && 200 === $response['response'] && ( isset( $response['body']['success'] ) && $response['body']['success'] === true ) ) {
+            return array(
+                'status' => true,
+                'msg'    => __( 'Contact added successfully.', 'funnelkit-wasapbom' ),
+            );
+        }
+
+        $message = __( 'Contact could not be added. ', 'funnelkit-wasapbom' );
 
         if ( isset( $response['body']['message'] ) && $response['body']['success'] === false ) {
             $message = $response['body']['message'];
